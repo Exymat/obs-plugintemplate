@@ -21,11 +21,21 @@ FetchContent_Declare(
 set(LUNASVG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(lunasvg)
 
+# LunaSVG/plutovg trigger warnings; OBS CI uses warnings-as-errors. Use compiler-specific flags.
 if(TARGET plutovg)
-  target_compile_options(plutovg PRIVATE -Wno-error -Wno-unused-parameter -Wno-sign-compare)
+  if(MSVC)
+    target_compile_options(plutovg PRIVATE /WX- /wd4100 /wd4244 /wd4267)
+  else()
+    target_compile_options(plutovg PRIVATE -Wno-error -Wno-unused-parameter -Wno-sign-compare)
+  endif()
 endif()
 if(TARGET lunasvg)
-  target_compile_options(lunasvg PRIVATE -Wno-error -Wno-ignored-qualifiers -Wno-unused-parameter -Wno-sign-compare)
+  if(MSVC)
+    target_compile_options(lunasvg PRIVATE /WX- /wd4100 /wd4189 /wd4244 /wd4267)
+  else()
+    target_compile_options(lunasvg PRIVATE -Wno-error -Wno-ignored-qualifiers -Wno-unused-parameter
+                                       -Wno-sign-compare)
+  endif()
 endif()
 
 add_library(${CMAKE_PROJECT_NAME} MODULE)
