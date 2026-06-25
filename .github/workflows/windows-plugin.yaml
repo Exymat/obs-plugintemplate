@@ -1,0 +1,70 @@
+name: Windows Plugin
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows plugin
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read buildspec
+        id: spec
+        run: |
+          $spec = Get-Content -Path buildspec.json -Raw | ConvertFrom-Json
+          "name=$($spec.name)" >> $env:GITHUB_OUTPUT
+          "version=$($spec.version)" >> $env:GITHUB_OUTPUT
+
+      - name: Build plugin
+        uses: ./.github/actions/build-plugin
+        with:
+          target: x64
+          config: RelWithDebInfo
+
+      - name: Package plugin
+        uses: ./.github/actions/package-plugin
+        with:
+          target: x64
+          config: RelWithDebInfo
+          package: false
+
+      - name: Upload Windows plugin zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.spec.outputs.name }}-windows-${{ github.sha }}
+          path: release/${{ steps.spec.outputs.name }}-${{ steps.spec.outputs.version }}-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Install instructions
+        run: |
+          @"
+          ### Windows plugin ready
+
+          1. Download the **${{ steps.spec.outputs.name }}-windows-${{ github.sha }}** artifact from this workflow run.
+          2. Extract the zip.
+          3. Copy the contents into:
+
+             ``%APPDATA%\obs-studio\plugins\obs-widget\``
+
+             You should end up with:
+
+             - ``bin\64bit\obs-widget.dll``
+             - ``data\effects\pill_glass.effect``
+             - ``data\locale\en-US.ini``
+
+          4. Restart OBS Studio.
+          5. Add source: **Glass Pill Widget**
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8

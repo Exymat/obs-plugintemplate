@@ -1,59 +1,118 @@
-# OBS Plugin Template
+# OBS Glass Pill Widget
 
-## Introduction
+Native OBS Studio plugin that renders a configurable glass pill overlay with procedural caustics, SVG-quality text (time, day, placeholder weather), and timed slide/fade animations.
 
-The plugin template is meant to be used as a starting point for OBS Studio plugin development. It includes:
+## Features
 
-* Boilerplate plugin source code
-* A CMake project file
-* GitHub Actions workflows and repository actions
+- **Glass pill** with animated procedural caustics (HLSL shader)
+- **SVG-quality text** via [LunaSVG](https://github.com/sammycage/lunasvg) rasterized at 1–4× scale
+- **Timed cycle**: hidden by default, appears every 5 minutes (configurable), shows ~15s, animates in/out
+- **Placeholder weather** text and optional SVG icon (no API required for v1)
+- **Debug mode** to keep the pill visible while tuning layout in OBS
 
-## Supported Build Environments
+> **Note:** The glass effect is simulated (translucent fill + caustic highlights). OBS custom sources cannot sample the scene behind them for true backdrop refraction.
 
-| Platform  | Tool   |
-|-----------|--------|
-| Windows   | Visual Studio 17 2022 |
-| macOS     | XCode 16.0 |
-| Windows, macOS  | CMake 3.30.5 |
-| Ubuntu 24.04 | CMake 3.28.3 |
-| Ubuntu 24.04 | `ninja-build` |
-| Ubuntu 24.04 | `pkg-config`
-| Ubuntu 24.04 | `build-essential` |
+## Requirements
 
-## Quick Start
+- Windows 10/11
+- OBS Studio 31.x (recommended for the Windows plugin build from CI)
 
-An absolute bare-bones [Quick Start Guide](https://github.com/obsproject/obs-plugintemplate/wiki/Quick-Start-Guide) is available in the wiki.
+Local compilation is optional — see **Cloud CI** below if you do not want Visual Studio on your machine.
 
-## Documentation
+## Cloud CI (recommended — no Visual Studio)
 
-All documentation can be found in the [Plugin Template Wiki](https://github.com/obsproject/obs-plugintemplate/wiki).
+GitHub Actions builds the Windows `.dll` for you on every push to `main` / `master`, or when you trigger the workflow manually.
 
-Suggested reading to get up and running:
+### One-time setup
 
-* [Getting started](https://github.com/obsproject/obs-plugintemplate/wiki/Getting-Started)
-* [Build system requirements](https://github.com/obsproject/obs-plugintemplate/wiki/Build-System-Requirements)
-* [Build system options](https://github.com/obsproject/obs-plugintemplate/wiki/CMake-Build-System-Options)
+1. Create a new GitHub repository (e.g. `obs-widget`).
+2. Point git at your repo (the clone still references the OBS template upstream):
 
-## GitHub Actions & CI
+```powershell
+cd c:\Users\albin\Documents\projects\obs_widget
+git remote remove origin
+git remote add origin https://github.com/YOUR_USER/obs-widget.git
+git add .
+git commit -m "Add OBS Glass Pill Widget plugin"
+git push -u origin master
+```
 
-Default GitHub Actions workflows are available for the following repository actions:
+3. Open **GitHub → Actions** and wait for **Windows Plugin** to finish (about 10–20 minutes on first run while OBS deps download).
 
-* `push`: Run for commits or tags pushed to `master` or `main` branches.
-* `pr-pull`: Run when a Pull Request has been pushed or synchronized.
-* `dispatch`: Run when triggered by the workflow dispatch in GitHub's user interface.
-* `build-project`: Builds the actual project and is triggered by other workflows.
-* `check-format`: Checks CMake and plugin source code formatting and is triggered by other workflows.
+### Download and install
 
-The workflows make use of GitHub repository actions (contained in `.github/actions`) and build scripts (contained in `.github/scripts`) which are not needed for local development, but might need to be adjusted if additional/different steps are required to build the plugin.
+1. Open the completed workflow run.
+2. Download the artifact named `obs-widget-windows-<commit>`.
+3. Extract the zip.
+4. Copy everything into:
 
-### Retrieving build artifacts
+```
+%APPDATA%\obs-studio\plugins\obs-widget\
+```
 
-Successful builds on GitHub Actions will produce build artifacts that can be downloaded for testing. These artifacts are commonly simple archives and will not contain package installers or installation programs.
+5. Restart OBS → add source **Glass Pill Widget**.
 
-### Building a Release
+You can also run the build on demand: **Actions → Windows Plugin → Run workflow**.
 
-To create a release, an appropriately named tag needs to be pushed to the `main`/`master` branch using semantic versioning (e.g., `12.3.4`, `23.4.5-beta2`). A draft release will be created on the associated repository with generated installer packages or installation programs attached as release artifacts.
+## Local build (optional)
 
-## Signing and Notarizing on macOS
+### Windows
 
-Basic concepts of codesigning and notarization on macOS are explained in the correspodning [Wiki article](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS) which has a specific section for the [GitHub Actions setup](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS#setting-up-code-signing-for-github-actions).
+Requires Visual Studio 2022 and CMake 3.30+:
+
+```powershell
+cd obs_widget
+cmake --preset windows-x64
+cmake --build --preset windows-x64 --config RelWithDebInfo
+```
+
+Install from `build_x64\rundir\RelWithDebInfo\obs-widget\` to `%APPDATA%\obs-studio\plugins\obs-widget\`.
+
+### Linux / WSL (compile check only)
+
+```bash
+cmake --preset ubuntu-x86_64
+cmake --build build_x86_64
+```
+
+Output: `build_x86_64/rundir/RelWithDebInfo/obs-widget.so` plus `data/`.
+
+> WSL builds a Linux `.so` — it will **not** load in Windows OBS.
+
+## Usage
+
+1. In OBS, add a source: **Glass Pill Widget**
+2. Position and scale the source in your scene
+3. Enable **Always visible (debug)** while adjusting size, fonts, and timing
+4. Disable debug when finished — the pill will appear on the configured interval
+
+### Key settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Width / Height | 480 × 72 | Source dimensions |
+| Interval | 300 s | Time hidden between appearances |
+| Show duration | 15 s | How long the pill stays visible |
+| Render scale | 3 | SVG raster multiplier (higher = sharper text) |
+| Locale | fr-FR | Date formatting (`fr-FR`, `en-US`, …) |
+| Weather text | 22°C | Static placeholder |
+| Caustic intensity | 0.6 | Strength of animated highlights |
+
+## Project structure
+
+```
+src/
+  plugin-main.cpp      Plugin entry + source registration
+  pill-source.cpp      OBS source (properties, tick, render)
+  pill-animation.cpp   Show/hide state machine + easing
+  svg-text.cpp         LunaSVG text → gs_texture
+  pill-layout.cpp      Horizontal section layout
+  time-format.cpp      Clock and date formatting
+data/
+  effects/pill_glass.effect
+  locale/en-US.ini
+```
+
+## License
+
+GPL-2.0 (same as OBS plugin template)

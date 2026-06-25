@@ -1,0 +1,83 @@
+uniform float4x4 ViewProj;
+uniform float2 pill_size;
+uniform float corner_radius;
+uniform float opacity;
+uniform float caustic_time;
+uniform float caustic_intensity;
+
+sampler_state linearClamp {
+	Filter   = Linear;
+	AddressU = Clamp;
+	AddressV = Clamp;
+};
+
+struct VertData {
+	float4 pos : POSITION;
+	float2 uv  : TEXCOORD0;
+};
+
+VertData VSDefault(VertData vert_in)
+{
+	VertData vert_out;
+	vert_out.pos = mul(float4(vert_in.pos.xyz, 1.0), ViewProj);
+	vert_out.uv = vert_in.uv;
+	return vert_out;
+}
+
+float sdRoundBox(float2 p, float2 b, float r)
+{
+	float2 q = abs(p) - b + r;
+	return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+float causticPattern(float2 uv, float t)
+{
+	float2 p = uv * 6.0;
+	float c = 0.0;
+	c += sin(p.x * 2.1 + t * 1.3) * sin(p.y * 1.7 - t * 0.9);
+	c += sin((p.x + p.y) * 1.5 + t * 0.7) * 0.6;
+	c += sin(length(p) * 3.0 - t * 1.8) * 0.4;
+	return saturate(c * 0.35 + 0.35);
+}
+
+float4 PSPillGlass(VertData vert_in) : TARGET
+{
+	float2 uv = vert_in.uv;
+	float2 px = uv * pill_size;
+	float2 center = pill_size * 0.5;
+	float2 local = px - center;
+	float2 half_size = pill_size * 0.5 - 1.0;
+
+	float dist = sdRoundBox(local, half_size, corner_radius);
+	float alpha = 1.0 - smoothstep(-1.0, 1.5, dist);
+	if (alpha <= 0.001) {
+		discard;
+	}
+
+	float2 nuv = local / max(pill_size, float2(1.0, 1.0));
+	float caustics = causticPattern(nuv * 3.0 + float2(caustic_time * 0.05, -caustic_time * 0.04), caustic_time);
+	caustics *= caustic_intensity;
+
+	float edge = 1.0 - smoothstep(0.0, 3.0, abs(dist));
+	float rim = pow(edge, 2.0);
+
+	float3 glass = float3(0.82, 0.88, 0.95);
+	glass += caustics * float3(0.35, 0.45, 0.55);
+	glass += rim * float3(0.55, 0.62, 0.72);
+
+	float fill = 0.18 + caustics * 0.12;
+	float3 color = glass * (fill + rim * 0.35);
+	color += float3(1.0, 1.0, 1.0) * rim * 0.25;
+
+	float4 out_color = float4(color, alpha * opacity * (0.55 + rim * 0.25));
+	return out_color;
+}
+
+technique Draw
+{
+	pass
+	{
+		vertex_shader = VSDefault(vert_in);
+		pixel_shader  = PSPillGlass(vert_in);
+	}
+}
